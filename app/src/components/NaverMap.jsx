@@ -8,44 +8,38 @@ const LAYER_STYLE = {
 }
 
 function isSdkReady() {
-  return !!(window.naver && window.naver.maps && window.naver.maps.Marker && window.naver.maps.LatLng)
+  return !!(
+    window.naver &&
+    window.naver.maps &&
+    window.naver.maps.Marker &&
+    window.naver.maps.LatLng &&
+    window.MarkerClustering
+  )
 }
 
-// 내 맛집 핀 (물방울형)
+// 내 맛집 핀
 function restaurantMarkerIcon(status, size = 36) {
   const color = status === 'visited' ? VISITED_COLOR : WISHLIST_COLOR
   return {
-    content: [
-      `<div style="`,
-      `width:${size}px;height:${size}px;`,
-      `background:${color};`,
-      `border-radius:50% 50% 50% 0;`,
-      `transform:rotate(-45deg);`,
-      `box-shadow:0 2px 6px rgba(0,0,0,0.25);`,
-      `border:2px solid white;`,
-      `cursor:pointer;`,
-      `"></div>`,
-    ].join(''),
+    content: `<div style="width:${size}px;height:${size}px;background:${color};border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,0.25);border:2px solid white;cursor:pointer;"></div>`,
     anchor: new window.naver.maps.Point(size / 2, size),
   }
 }
 
-// 외부 레이어 핀 (원형 + 이모지)
+// 외부 레이어 핀
 function landmarkMarkerIcon(layerType, size = 30) {
   const s = LAYER_STYLE[layerType] || LAYER_STYLE.baeknyeon
   return {
-    content: [
-      `<div style="`,
-      `width:${size}px;height:${size}px;`,
-      `background:${s.bg};`,
-      `border:2px solid ${s.color};`,
-      `border-radius:50%;`,
-      `display:flex;align-items:center;justify-content:center;`,
-      `font-size:${Math.floor(size * 0.5)}px;`,
-      `box-shadow:0 1px 4px rgba(0,0,0,0.2);`,
-      `cursor:pointer;`,
-      `">${s.icon}</div>`,
-    ].join(''),
+    content: `<div style="width:${size}px;height:${size}px;background:${s.bg};border:2px solid ${s.color};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${Math.floor(size * 0.5)}px;box-shadow:0 1px 4px rgba(0,0,0,0.2);cursor:pointer;">${s.icon}</div>`,
+    anchor: new window.naver.maps.Point(size / 2, size / 2),
+  }
+}
+
+// 클러스터 아이콘 (크기·색상별)
+function clusterIcon(color, borderColor, size) {
+  return {
+    content: `<div style="cursor:pointer;width:${size}px;height:${size}px;line-height:${size}px;font-size:13px;color:white;font-weight:700;text-align:center;background:${color};border:3px solid ${borderColor};border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>`,
+    size: new window.naver.maps.Size(size, size),
     anchor: new window.naver.maps.Point(size / 2, size / 2),
   }
 }
@@ -57,19 +51,16 @@ export default function NaverMap({
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
-  const restaurantMarkersRef = useRef([])
-  const landmarkMarkersRef = useRef([])
+  const restaurantClustererRef = useRef(null)
+  const landmarkClustererRef = useRef(null)
   const userMarkerRef = useRef(null)
   const [sdkReady, setSdkReady] = useState(isSdkReady())
 
-  // SDK 로드 대기
+  // SDK 로드 대기 (지도 SDK + MarkerClustering)
   useEffect(() => {
     if (sdkReady) return
     const timer = setInterval(() => {
-      if (isSdkReady()) {
-        setSdkReady(true)
-        clearInterval(timer)
-      }
+      if (isSdkReady()) { setSdkReady(true); clearInterval(timer) }
     }, 150)
     const giveUp = setTimeout(() => clearInterval(timer), 30000)
     return () => { clearInterval(timer); clearTimeout(giveUp) }
@@ -89,53 +80,98 @@ export default function NaverMap({
     })
   }, [sdkReady])
 
-  // 식당 마커
+  // 식당 클러스터러 (내 맛집)
   useEffect(() => {
     if (!sdkReady || !mapRef.current) return
 
-    restaurantMarkersRef.current.forEach(m => m.setMap(null))
-    restaurantMarkersRef.current = []
+    // 기존 클러스터러 제거
+    if (restaurantClustererRef.current) {
+      restaurantClustererRef.current.setMap(null)
+      restaurantClustererRef.current = null
+    }
 
-    restaurants.forEach(r => {
+    // 새 마커 생성
+    const markers = restaurants.map(r => {
       const marker = new window.naver.maps.Marker({
         position: new window.naver.maps.LatLng(r.lat, r.lng),
-        map: mapRef.current,
         icon: restaurantMarkerIcon(r.status),
         title: r.name,
-        zIndex: 100,
       })
       window.naver.maps.Event.addListener(marker, 'click', () => {
         onSelectRestaurant(r)
         mapRef.current.panTo(new window.naver.maps.LatLng(r.lat, r.lng))
       })
-      restaurantMarkersRef.current.push(marker)
+      return marker
+    })
+
+    // 클러스터러 생성
+    restaurantClustererRef.current = new window.MarkerClustering({
+      minClusterSize: 2,
+      maxZoom: 14,
+      map: mapRef.current,
+      markers,
+      disableClickZoom: false,
+      gridSize: 100,
+      icons: [
+        clusterIcon('#FF385C', 'white', 36),
+        clusterIcon('#FF385C', 'white', 42),
+        clusterIcon('#E11D48', 'white', 48),
+        clusterIcon('#BE123C', 'white', 54),
+        clusterIcon('#9F1239', 'white', 60),
+      ],
+      indexGenerator: [10, 30, 80, 200, 500],
+      stylingFunction: (clusterMarker, count) => {
+        const el = clusterMarker.getElement().querySelector('div')
+        if (el) el.innerText = String(count)
+      },
     })
   }, [restaurants, onSelectRestaurant, sdkReady])
 
-  // 외부 레이어 마커 (백년가게, 리뷰)
+  // 외부 레이어 클러스터러 (백년가게 등)
   useEffect(() => {
     if (!sdkReady || !mapRef.current) return
 
-    landmarkMarkersRef.current.forEach(m => m.setMap(null))
-    landmarkMarkersRef.current = []
+    if (landmarkClustererRef.current) {
+      landmarkClustererRef.current.setMap(null)
+      landmarkClustererRef.current = null
+    }
 
-    landmarks.forEach(l => {
+    const markers = landmarks.map(l => {
       const marker = new window.naver.maps.Marker({
         position: new window.naver.maps.LatLng(l.lat, l.lng),
-        map: mapRef.current,
         icon: landmarkMarkerIcon(l.layer_type),
         title: l.name,
-        zIndex: 50, // 내 맛집보다 뒤
       })
       window.naver.maps.Event.addListener(marker, 'click', () => {
         onSelectLandmark(l)
         mapRef.current.panTo(new window.naver.maps.LatLng(l.lat, l.lng))
       })
-      landmarkMarkersRef.current.push(marker)
+      return marker
+    })
+
+    landmarkClustererRef.current = new window.MarkerClustering({
+      minClusterSize: 2,
+      maxZoom: 14,
+      map: mapRef.current,
+      markers,
+      disableClickZoom: false,
+      gridSize: 100,
+      icons: [
+        clusterIcon('#D97706', 'white', 32),
+        clusterIcon('#D97706', 'white', 38),
+        clusterIcon('#B45309', 'white', 44),
+        clusterIcon('#92400E', 'white', 50),
+        clusterIcon('#78350F', 'white', 56),
+      ],
+      indexGenerator: [10, 30, 80, 200, 500],
+      stylingFunction: (clusterMarker, count) => {
+        const el = clusterMarker.getElement().querySelector('div')
+        if (el) el.innerText = String(count)
+      },
     })
   }, [landmarks, onSelectLandmark, sdkReady])
 
-  // 현재 위치 마커
+  // 사용자 위치 마커
   useEffect(() => {
     if (!sdkReady || !mapRef.current) return
 
