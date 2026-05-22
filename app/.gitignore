@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# 시드 데이터 (대용량 CSV, 실패 로그)
+supabase/seed-data/*.csv
+supabase/seed-data/baeknyeon_failed.json
+seed.log
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -1,9 +1,18 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const VISITED_COLOR = '#FF385C'
 const WISHLIST_COLOR = '#94A3B8'
+const LAYER_STYLE = {
+  baeknyeon: { color: '#D97706', icon: '🏛️', bg: '#FEF3C7' },
+  review: { color: '#059669', icon: '⭐', bg: '#ECFDF5' },
+}
 
-function markerIcon(status, size = 36) {
+function isSdkReady() {
+  return !!(window.naver && window.naver.maps && window.naver.maps.Marker && window.naver.maps.LatLng)
+}
+
+// 내 맛집 핀 (물방울형)
+function restaurantMarkerIcon(status, size = 36) {
   const color = status === 'visited' ? VISITED_COLOR : WISHLIST_COLOR
   return {
     content: [
@@ -21,65 +30,119 @@ function markerIcon(status, size = 36) {
   }
 }
 
-export default function NaverMap({ restaurants, onSelectRestaurant, userLocation }) {
+// 외부 레이어 핀 (원형 + 이모지)
+function landmarkMarkerIcon(layerType, size = 30) {
+  const s = LAYER_STYLE[layerType] || LAYER_STYLE.baeknyeon
+  return {
+    content: [
+      `<div style="`,
+      `width:${size}px;height:${size}px;`,
+      `background:${s.bg};`,
+      `border:2px solid ${s.color};`,
+      `border-radius:50%;`,
+      `display:flex;align-items:center;justify-content:center;`,
+      `font-size:${Math.floor(size * 0.5)}px;`,
+      `box-shadow:0 1px 4px rgba(0,0,0,0.2);`,
+      `cursor:pointer;`,
+      `">${s.icon}</div>`,
+    ].join(''),
+    anchor: new window.naver.maps.Point(size / 2, size / 2),
+  }
+}
+
+export default function NaverMap({
+  restaurants, landmarks,
+  onSelectRestaurant, onSelectLandmark,
+  userLocation,
+}) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
-  const markersRef = useRef([])
+  const restaurantMarkersRef = useRef([])
+  const landmarkMarkersRef = useRef([])
   const userMarkerRef = useRef(null)
+  const [sdkReady, setSdkReady] = useState(isSdkReady())
 
-  // 지도 초기화 (한 번만)
+  // SDK 로드 대기
   useEffect(() => {
-    const init = () => {
-      if (!window.naver || mapRef.current) return
-      mapRef.current = new window.naver.maps.Map(containerRef.current, {
-        center: new window.naver.maps.LatLng(37.5665, 126.9780),
-        zoom: 13,
-        mapTypeControl: false,
-        scaleControl: false,
-        logoControl: true,
-        mapDataControl: false,
-        zoomControl: false,
-      })
-    }
+    if (sdkReady) return
+    const timer = setInterval(() => {
+      if (isSdkReady()) {
+        setSdkReady(true)
+        clearInterval(timer)
+      }
+    }, 150)
+    const giveUp = setTimeout(() => clearInterval(timer), 30000)
+    return () => { clearInterval(timer); clearTimeout(giveUp) }
+  }, [sdkReady])
 
-    // SDK 로드 대기
-    if (window.naver) {
-      init()
-    } else {
-      const timer = setInterval(() => {
-        if (window.naver) { clearInterval(timer); init() }
-      }, 100)
-      return () => clearInterval(timer)
-    }
-  }, [])
-
-  // 식당 마커 갱신
+  // 지도 초기화
   useEffect(() => {
-    if (!mapRef.current) return
+    if (!sdkReady || mapRef.current) return
+    mapRef.current = new window.naver.maps.Map(containerRef.current, {
+      center: new window.naver.maps.LatLng(37.5665, 126.9780),
+      zoom: 13,
+      mapTypeControl: false,
+      scaleControl: false,
+      logoControl: true,
+      mapDataControl: false,
+      zoomControl: false,
+    })
+  }, [sdkReady])
 
-    markersRef.current.forEach(m => m.setMap(null))
-    markersRef.current = []
+  // 식당 마커
+  useEffect(() => {
+    if (!sdkReady || !mapRef.current) return
+
+    restaurantMarkersRef.current.forEach(m => m.setMap(null))
+    restaurantMarkersRef.current = []
 
     restaurants.forEach(r => {
       const marker = new window.naver.maps.Marker({
         position: new window.naver.maps.LatLng(r.lat, r.lng),
         map: mapRef.current,
-        icon: markerIcon(r.status),
+        icon: restaurantMarkerIcon(r.status),
         title: r.name,
+        zIndex: 100,
       })
       window.naver.maps.Event.addListener(marker, 'click', () => {
         onSelectRestaurant(r)
         mapRef.current.panTo(new window.naver.maps.LatLng(r.lat, r.lng))
       })
-      markersRef.current.push(marker)
+      restaurantMarkersRef.current.push(marker)
     })
-  }, [restaurants, onSelectRestaurant])
+  }, [restaurants, onSelectRestaurant, sdkReady])
+
+  // 외부 레이어 마커 (백년가게, 리뷰)
+  useEffect(() => {
+    if (!sdkReady || !mapRef.current) return
+
+    landmarkMarkersRef.current.forEach(m => m.setMap(null))
+    landmarkMarkersRef.current = []
+
+    landmarks.forEach(l => {
+      const marker = new window.naver.maps.Marker({
+        position: new window.naver.maps.LatLng(l.lat, l.lng),
+        map: mapRef.current,
+        icon: landmarkMarkerIcon(l.layer_type),
+        title: l.name,
+        zIndex: 50, // 내 맛집보다 뒤
+      })
+      window.naver.maps.Event.addListener(marker, 'click', () => {
+        onSelectLandmark(l)
+        mapRef.current.panTo(new window.naver.maps.LatLng(l.lat, l.lng))
+      })
+      landmarkMarkersRef.current.push(marker)
+    })
+  }, [landmarks, onSelectLandmark, sdkReady])
 
   // 현재 위치 마커
   useEffect(() => {
-    if (!mapRef.current) return
+    if (!sdkReady || !mapRef.current) return
 
-    if (userMarkerRef.current) { userMarkerRef.current.setMap(null); userMarkerRef.current = null }
+    if (userMarkerRef.current) {
+      userMarkerRef.current.setMap(null)
+      userMarkerRef.current = null
+    }
 
     if (userLocation) {
       userMarkerRef.current = new window.naver.maps.Marker({
@@ -93,7 +156,20 @@ export default function NaverMap({ restaurants, onSelectRestaurant, userLocation
       })
       mapRef.current.panTo(new window.naver.maps.LatLng(userLocation.lat, userLocation.lng))
     }
-  }, [userLocation])
+  }, [userLocation, sdkReady])
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {!sdkReady && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: '#F3F4F6', color: '#6B7280', fontSize: '14px',
+        }}>
+          지도를 불러오는 중...
+        </div>
+      )}
+    </div>
+  )
 }

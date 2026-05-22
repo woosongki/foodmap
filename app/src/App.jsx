@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './lib/supabase'
 import NaverMap from './components/NaverMap'
 import BottomSheet from './components/BottomSheet'
+import LandmarkSheet from './components/LandmarkSheet'
 import AddRestaurant from './components/AddRestaurant'
 import FilterBar from './components/FilterBar'
 import AuthModal from './components/AuthModal'
@@ -18,7 +19,9 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 export default function App() {
   const [restaurants, setRestaurants] = useState([])
+  const [landmarks, setLandmarks] = useState([])
   const [selected, setSelected] = useState(null)
+  const [selectedLandmark, setSelectedLandmark] = useState(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -29,7 +32,7 @@ export default function App() {
   const [layerBaeknyeon, setLayerBaeknyeon] = useState(false)
   const [layerReview, setLayerReview] = useState(false)
 
-  useEffect(() => { fetchRestaurants() }, [])
+  useEffect(() => { fetchRestaurants(); fetchLandmarks() }, [])
 
   const fetchRestaurants = async () => {
     const { data } = await supabase
@@ -37,6 +40,13 @@ export default function App() {
       .select('*, tags(*), photos(*)')
       .order('created_at', { ascending: false })
     if (data) setRestaurants(data)
+  }
+
+  const fetchLandmarks = async () => {
+    const { data } = await supabase
+      .from('external_landmarks')
+      .select('*')
+    if (data) setLandmarks(data)
   }
 
   const handleAddRestaurant = async (payload) => {
@@ -86,7 +96,17 @@ export default function App() {
     return true
   })
 
-  const hasBottomSheet = Boolean(selected)
+  const visibleLandmarks = landmarks.filter(l => {
+    // 토글에 따라 레이어 표시
+    if (l.layer_type === 'baeknyeon' && !layerBaeknyeon) return false
+    if (l.layer_type === 'review' && !layerReview) return false
+    if (showNearby && userLocation) {
+      return haversineKm(userLocation.lat, userLocation.lng, l.lat, l.lng) <= NEARBY_KM
+    }
+    return true
+  })
+
+  const hasBottomSheet = Boolean(selected) || Boolean(selectedLandmark)
   const addButtonBottom = hasBottomSheet ? 'calc(65vh + 16px)' : '80px'
 
   return (
@@ -102,12 +122,14 @@ export default function App() {
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, paddingTop: '96px' }}>
         <NaverMap
           restaurants={visibleRestaurants}
-          onSelectRestaurant={setSelected}
+          landmarks={visibleLandmarks}
+          onSelectRestaurant={r => { setSelectedLandmark(null); setSelected(r) }}
+          onSelectLandmark={l => { setSelected(null); setSelectedLandmark(l) }}
           userLocation={userLocation}
         />
       </div>
 
-      {hasBottomSheet && (
+      {selected && (
         <BottomSheet
           restaurant={selected}
           onClose={() => setSelected(null)}
@@ -115,6 +137,13 @@ export default function App() {
           onDelete={handleDeleteRestaurant}
           onUpdate={handleUpdateRestaurant}
           onEditRequest={() => setShowAuth(true)}
+        />
+      )}
+
+      {selectedLandmark && (
+        <LandmarkSheet
+          landmark={selectedLandmark}
+          onClose={() => setSelectedLandmark(null)}
         />
       )}
 
