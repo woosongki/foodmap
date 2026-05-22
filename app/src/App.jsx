@@ -1,0 +1,166 @@
+import { useState, useEffect, useCallback } from 'react'
+import { supabase } from './lib/supabase'
+import NaverMap from './components/NaverMap'
+import BottomSheet from './components/BottomSheet'
+import AddRestaurant from './components/AddRestaurant'
+import FilterBar from './components/FilterBar'
+import AuthModal from './components/AuthModal'
+
+const NEARBY_KM = 2
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLng = ((lng2 - lng1) * Math.PI) / 180
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+export default function App() {
+  const [restaurants, setRestaurants] = useState([])
+  const [selected, setSelected] = useState(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [showAuth, setShowAuth] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
+  const [filters, setFilters] = useState([])
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [showNearby, setShowNearby] = useState(false)
+  const [userLocation, setUserLocation] = useState(null)
+  const [layerBaeknyeon, setLayerBaeknyeon] = useState(false)
+  const [layerReview, setLayerReview] = useState(false)
+
+  useEffect(() => { fetchRestaurants() }, [])
+
+  const fetchRestaurants = async () => {
+    const { data } = await supabase
+      .from('restaurants')
+      .select('*, tags(*), photos(*)')
+      .order('created_at', { ascending: false })
+    if (data) setRestaurants(data)
+  }
+
+  const handleAddRestaurant = async (payload) => {
+    const { _tags, _photos, ...restaurantData } = payload
+    const { data, error } = await supabase.from('restaurants').insert([restaurantData]).select()
+    if (error || !data?.length) { alert('저장 중 오류가 발생했습니다.'); return }
+    const id = data[0].id
+    if (_tags?.length) await supabase.from('tags').insert(_tags.map(t => ({ ...t, restaurant_id: id })))
+    if (_photos?.length) await supabase.from('photos').insert(_photos.map(p => ({ ...p, restaurant_id: id })))
+    await fetchRestaurants()
+    setShowAdd(false)
+  }
+
+  const handleDeleteRestaurant = async (id) => {
+    await supabase.from('restaurants').delete().eq('id', id)
+    setSelected(null)
+    await fetchRestaurants()
+  }
+
+  const handleUpdateRestaurant = useCallback(async (id, updates) => {
+    await supabase.from('restaurants').update(updates).eq('id', id)
+    await fetchRestaurants()
+    setSelected(prev => prev?.id === id ? { ...prev, ...updates } : prev)
+  }, [])
+
+  const handleNearby = () => {
+    if (showNearby) {
+      setShowNearby(false)
+      setUserLocation(null)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => { setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setShowNearby(true) },
+      () => alert('위치 권한을 허용해주세요.')
+    )
+  }
+
+  const visibleRestaurants = restaurants.filter(r => {
+    if (statusFilter !== 'all' && r.status !== statusFilter) return false
+    if (filters.length > 0) {
+      const rTags = (r.tags || []).map(t => t.tag)
+      if (!filters.every(f => rTags.includes(f))) return false
+    }
+    if (showNearby && userLocation) {
+      return haversineKm(userLocation.lat, userLocation.lng, r.lat, r.lng) <= NEARBY_KM
+    }
+    return true
+  })
+
+  const hasBottomSheet = Boolean(selected)
+  const addButtonBottom = hasBottomSheet ? 'calc(65vh + 16px)' : '80px'
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100dvh', overflow: 'hidden' }}>
+      <FilterBar
+        filters={filters} setFilters={setFilters}
+        statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+        showNearby={showNearby} onNearby={handleNearby}
+        layerBaeknyeon={layerBaeknyeon} setLayerBaeknyeon={setLayerBaeknyeon}
+        layerReview={layerReview} setLayerReview={setLayerReview}
+      />
+
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, paddingTop: '96px' }}>
+        <NaverMap
+          restaurants={visibleRestaurants}
+          onSelectRestaurant={setSelected}
+          userLocation={userLocation}
+        />
+      </div>
+
+      {hasBottomSheet && (
+        <BottomSheet
+          restaurant={selected}
+          onClose={() => setSelected(null)}
+          isAuthenticated={isAuthenticated}
+          onDelete={handleDeleteRestaurant}
+          onUpdate={handleUpdateRestaurant}
+          onEditRequest={() => setShowAuth(true)}
+        />
+      )}
+
+      {/* 편집 모드 진입 버튼 */}
+      {!isAuthenticated && (
+        <button
+          onClick={() => setShowAuth(true)}
+          style={{
+            position: 'absolute', bottom: '16px', right: '16px',
+            padding: '10px 16px', borderRadius: '20px', border: '1px solid #E5E7EB',
+            background: 'white', fontSize: '13px', cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)', zIndex: 100, color: '#374151',
+          }}
+        >🔒 편집 모드</button>
+      )}
+
+      {/* + 버튼 (편집 모드 시) */}
+      {isAuthenticated && (
+        <button
+          onClick={() => setShowAdd(true)}
+          style={{
+            position: 'absolute', bottom: addButtonBottom, right: '16px',
+            width: '56px', height: '56px', borderRadius: '50%',
+            background: '#FF385C', color: 'white', border: 'none',
+            fontSize: '28px', lineHeight: '1', cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(255,56,92,0.4)', zIndex: 100,
+            transition: 'bottom 0.3s ease',
+          }}
+        >+</button>
+      )}
+
+      {/* 인증 모달 */}
+      {showAuth && (
+        <AuthModal
+          onSuccess={() => { setIsAuthenticated(true); setShowAuth(false) }}
+          onClose={() => setShowAuth(false)}
+        />
+      )}
+
+      {/* 식당 등록 모달 */}
+      {showAdd && (
+        <AddRestaurant
+          onSave={handleAddRestaurant}
+          onClose={() => setShowAdd(false)}
+        />
+      )}
+    </div>
+  )
+}
