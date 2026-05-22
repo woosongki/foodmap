@@ -1,13 +1,16 @@
-// 노션 "전국 맛집 리스트(1)" → Supabase restaurants 등록 (위시리스트)
+// 노션 "전국 맛집 리스트" 시리즈 → Supabase restaurants 등록
 // 사용: node scripts/seed-notion-restaurants.mjs
 //
 // 동작:
-// 1. supabase/seed-data/notion-restaurants-1.csv 읽기
+// 1. supabase/seed-data/notion-restaurants-*.csv 모두 자동 로드
 // 2. 각 행을 "업소명 + 행정동/지하철역"으로 네이버 검색 → 좌표 매칭
-// 3. restaurants 테이블에 위시리스트로 INSERT
-// 4. 노션 태그 → tags 테이블 (free 태그)
-// 5. 메모에 출처·지하철역 정보 기록
-// 6. 실패는 notion_failed.json에 저장
+// 3. 정책:
+//    - 노션 "방문" + 맛평가 있음 → visited + axis_taste=true
+//    - 노션 "방문" + 맛평가 없음 → wishlist (정보 부족)
+//    - 노션 "미방문"                → wishlist
+// 4. 메모에 출처·지하철역·행정동·분점·시그니처·특징·맛평가 모두 기록
+// 5. tags 테이블에 노션 태그를 free 태그로 추가
+// 6. 기존 노션 리스트 출처(recommender='노션 리스트') 데이터 삭제 후 재삽입
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -57,15 +60,38 @@ function parseCSV(text) {
   return rows.filter(r => r.length > 1 || (r[0] && r[0].trim()))
 }
 
-const csvPath = path.join(APP_ROOT, 'supabase', 'seed-data', 'notion-restaurants-1.csv')
-const parsed = parseCSV(await fs.readFile(csvPath, 'utf8'))
-const headers = parsed[0].map(h => h.trim())
-const rows = parsed.slice(1).map(cols => {
-  const o = {}
-  headers.forEach((h, i) => { o[h] = (cols[i] || '').trim() })
-  return o
-})
-console.log(`총 ${rows.length}개 노션 식당 로드\n`)
+// ─── 모든 notion-restaurants-*.csv 자동 로드 ──────────────
+const seedDir = path.join(APP_ROOT, 'supabase', 'seed-data')
+const allFiles = (await fs.readdir(seedDir))
+  .filter(f => /^notion-restaurants-\d+\.csv$/.test(f))
+  .sort()
+
+console.log(`발견된 노션 CSV: ${allFiles.join(', ')}\n`)
+
+const allRows = []
+for (const file of allFiles) {
+  const parsed = parseCSV(await fs.readFile(path.join(seedDir, file), 'utf8'))
+  const headers = parsed[0].map(h => h.trim())
+  const rows = parsed.slice(1).map(cols => {
+    const o = { _source: file }
+    headers.forEach((h, i) => { o[h] = (cols[i] || '').trim() })
+    return o
+  })
+  console.log(`  ${file}: ${rows.length}개`)
+  allRows.push(...rows)
+}
+console.log(`\n총 ${allRows.length}개 행 로드\n`)
+
+// 중복 제거 (같은 업소명 + 같은 행정동은 한 번만)
+const seen = new Set()
+const uniqueRows = []
+for (const r of allRows) {
+  const key = `${r['업소명']}::${r['행정동'] || ''}::${r['지하철역'] || ''}`
+  if (seen.has(key)) continue
+  seen.add(key)
+  uniqueRows.push(r)
+}
+console.log(`중복 제거 후: ${uniqueRows.length}개\n`)
 
 // ─── 네이버 검색 ─────────────────────────────────────────
 async function searchNaver(query, display = 5) {
@@ -88,108 +114,101 @@ const parseCoord = (mx, my) => {
 }
 
 // ─── 매칭 점수 ───────────────────────────────────────────
-// 노션 데이터엔 주소가 없어서 행정동/지하철역으로 점수 계산
-function score(item, name, haengjeongdong, station) {
+function score(item, name, dong, station) {
   const addr = item.roadAddress || item.address || ''
   const title = cleanTitle(item.title)
   let s = 0
 
-  // 행정동 일치
-  if (haengjeongdong && addr.includes(haengjeongdong)) s += 40
+  if (dong && addr.includes(dong)) s += 40
 
-  // 지하철역 인근 (역명에서 "역" 제거하고 동네 이름으로 검색)
   if (station) {
-    const stationBase = station.replace(/역$/, '')
-    if (addr.includes(stationBase)) s += 30
+    const base = station.replace(/역$/, '')
+    if (addr.includes(base)) s += 30
   }
 
-  // 업소명 매칭
   if (title === name) s += 30
   else if (title.includes(name) || name.includes(title)) s += 15
 
   return s
 }
 
-async function findBest(name, haengjeongdong, station) {
+async function findBest(name, dong, station) {
   // 1차: 업소명 + 행정동
-  let items = await searchNaver(`${name} ${haengjeongdong}`, 10)
-  let ranked = (items || []).map(it => ({ it, score: score(it, name, haengjeongdong, station) }))
-    .sort((a, b) => b.score - a.score)
+  const queries = []
+  if (dong) queries.push(`${name} ${dong}`)
+  if (station) queries.push(`${name} ${station.replace(/역$/, '')}`)
+  queries.push(name)
 
-  if (ranked.length === 0 || ranked[0].score < 30) {
-    // 2차: 업소명 + 지하철역 부근
-    const stationBase = station.replace(/역$/, '')
-    items = await searchNaver(`${name} ${stationBase}`, 10)
-    ranked = (items || []).map(it => ({ it, score: score(it, name, haengjeongdong, station) }))
-      .sort((a, b) => b.score - a.score)
+  let best = null
+  for (const q of queries) {
+    const items = await searchNaver(q, 10)
+    const ranked = (items || []).map(it => ({ it, s: score(it, name, dong, station) }))
+      .sort((a, b) => b.s - a.s)
+    if (ranked.length && ranked[0].s >= 30 && (!best || ranked[0].s > best.s)) {
+      best = ranked[0]
+    }
+    if (best && best.s >= 70) break // 충분히 높은 점수면 조기 종료
+    await new Promise(r => setTimeout(r, 50))
   }
-
-  if (ranked.length === 0 || ranked[0].score < 30) {
-    // 3차: 업소명만
-    items = await searchNaver(name, 10)
-    ranked = (items || []).map(it => ({ it, score: score(it, name, haengjeongdong, station) }))
-      .sort((a, b) => b.score - a.score)
-  }
-
-  if (ranked.length === 0 || ranked[0].score < 30) return null
-  return ranked[0].it
+  return best ? best.it : null
 }
 
-// ─── 시도 추출 (행정동 기반은 어려우니 검색 결과의 주소로 결정) ─
-function extractCity(address) {
-  if (!address) return null
-  const first = address.split(' ')[0]
-  const CITY_MAP = {
-    '서울': '서울', '서울특별시': '서울',
-    '부산': '부산', '부산광역시': '부산',
-    '대구': '대구', '대구광역시': '대구',
-    '인천': '인천', '인천광역시': '인천',
-    '광주': '광주', '광주광역시': '광주',
-    '대전': '대전', '대전광역시': '대전',
-    '울산': '울산', '울산광역시': '울산',
-    '세종': '세종', '세종특별자치시': '세종',
-    '경기': '경기', '경기도': '경기',
-    '강원': '강원', '강원도': '강원', '강원특별자치도': '강원',
+// ─── 상태 결정 정책 ──────────────────────────────────────
+function decideStatus(row) {
+  const visitVal = (row['방문유무'] || '').trim()
+  const tasteVal = (row['맛 평가'] || '').trim()
+  if (visitVal === '방문' && tasteVal) {
+    // 방문 + 맛평가 → 방문완료 + axis_taste
+    return { status: 'visited', axis_taste: true }
   }
-  return CITY_MAP[first] || first
+  return { status: 'wishlist', axis_taste: false }
 }
 
 // ─── 메인 처리 ───────────────────────────────────────────
 const toInsert = []
 const failures = []
 
-for (let i = 0; i < rows.length; i++) {
-  const r = rows[i]
+for (let i = 0; i < uniqueRows.length; i++) {
+  const r = uniqueRows[i]
   const name = r['업소명']
   const dong = r['행정동']
   const station = r['지하철역']
-  const tag = `[${String(i + 1).padStart(3, ' ')}/${rows.length}]`
+  const tag = `[${String(i + 1).padStart(4, ' ')}/${uniqueRows.length}]`
+
+  if (!name) {
+    failures.push({ ...r, _reason: 'no_name' })
+    console.log(`${tag} ✗ (업소명 없음)`)
+    continue
+  }
 
   try {
     const found = await findBest(name, dong, station)
     if (!found) {
       failures.push({ ...r, _reason: 'no_match' })
-      console.log(`${tag} ✗ ${name} (매칭 실패)`)
+      console.log(`${tag} ✗ ${name}`)
       continue
     }
     const coord = parseCoord(found.mapx, found.mapy)
     if (!coord) {
-      failures.push({ ...r, _reason: 'no_coord', _found: cleanTitle(found.title) })
-      console.log(`${tag} ✗ ${name} (좌표 없음)`)
+      failures.push({ ...r, _reason: 'no_coord' })
+      console.log(`${tag} ✗ ${name} (좌표)`)
       continue
     }
 
-    const address = found.roadAddress || found.address || ''
-    const naverTags = r['태그'].split(',').map(t => t.trim()).filter(Boolean)
+    const address = found.roadAddress || found.address || r['주소'] || ''
+    const naverTags = (r['태그'] || '').split(',').map(t => t.trim()).filter(Boolean)
+    const branches = (r['분점'] || '').split(',').map(t => t.trim()).filter(Boolean)
+    const { status, axis_taste } = decideStatus(r)
 
     const memoLines = []
-    memoLines.push('출처: 노션 전국 맛집 리스트(1)')
+    memoLines.push(`출처: ${r._source.replace('.csv', '').replace('notion-restaurants-', '노션 리스트 ')}`)
     if (station) memoLines.push(`지하철역: ${station}`)
     if (dong) memoLines.push(`행정동: ${dong}`)
+    if (r['맛 평가']) memoLines.push(`맛 평가: ${r['맛 평가']}`)
     if (r['시그니처']) memoLines.push(`시그니처: ${r['시그니처']}`)
     if (r['특징']) memoLines.push(`특징: ${r['특징']}`)
+    if (branches.length) memoLines.push(`분점: ${branches.join(', ')}`)
     if (r['뉴스,소개']) memoLines.push(`뉴스: ${r['뉴스,소개']}`)
-    if (r['맛 평가']) memoLines.push(`맛 평가: ${r['맛 평가']}`)
 
     toInsert.push({
       restaurant: {
@@ -198,11 +217,11 @@ for (let i = 0; i < rows.length; i++) {
         lat: coord.lat,
         lng: coord.lng,
         naver_url: found.link || null,
-        status: 'wishlist',
+        status,
         source: 'recommendation',
         recommender: '노션 리스트',
         memo: memoLines.join('\n'),
-        axis_taste: false,
+        axis_taste,
         axis_revisit: false,
         axis_unique: false,
       },
@@ -211,37 +230,45 @@ for (let i = 0; i < rows.length; i++) {
         ...naverTags.map(t => ({ tag: t.startsWith('#') ? t : `#${t}`, tag_type: 'free' })),
       ],
     })
-    console.log(`${tag} ✓ ${name} → ${cleanTitle(found.title)}`)
+
+    const flag = status === 'visited' ? '✓★' : '✓'
+    console.log(`${tag} ${flag} ${name} → ${cleanTitle(found.title)}`)
   } catch (e) {
     failures.push({ ...r, _reason: e.message })
-    console.log(`${tag} ! ${name} (에러: ${e.message})`)
+    console.log(`${tag} ! ${name} (${e.message})`)
   }
 
-  await new Promise(r => setTimeout(r, 120))
+  await new Promise(r => setTimeout(r, 110))
 }
 
+const visitedCount = toInsert.filter(x => x.restaurant.status === 'visited').length
+const wishCount = toInsert.length - visitedCount
+
 console.log(`\n✅ 매칭 성공: ${toInsert.length}개`)
+console.log(`   - 방문완료: ${visitedCount}개`)
+console.log(`   - 위시리스트: ${wishCount}개`)
 console.log(`⚠️  실패: ${failures.length}개`)
 
-// 실패 로그
 if (failures.length > 0) {
   await fs.writeFile(
-    path.join(APP_ROOT, 'supabase', 'seed-data', 'notion_failed.json'),
+    path.join(seedDir, 'notion_failed.json'),
     JSON.stringify(failures, null, 2),
     'utf8'
   )
 }
 
 // ─── Supabase 저장 ──────────────────────────────────────
-// 기존 노션 리스트 출처 데이터 삭제 (재실행 가능)
 console.log('\n기존 노션 리스트 출처 데이터 삭제...')
 const { data: existing } = await supabase
   .from('restaurants')
-  .select('id, tags(*)')
+  .select('id')
   .eq('recommender', '노션 리스트')
 if (existing && existing.length > 0) {
   const ids = existing.map(r => r.id)
-  await supabase.from('restaurants').delete().in('id', ids)
+  // chunk delete
+  for (let i = 0; i < ids.length; i += 100) {
+    await supabase.from('restaurants').delete().in('id', ids.slice(i, i + 100))
+  }
   console.log(`  ${ids.length}개 삭제`)
 }
 
@@ -255,11 +282,13 @@ for (const { restaurant, tags } of toInsert) {
   }
   const id = data[0].id
   if (tags.length) {
-    // 중복 제거 (같은 tag 두 번 INSERT 방지)
     const uniqueTags = [...new Map(tags.map(t => [t.tag, t])).values()]
     await supabase.from('tags').insert(uniqueTags.map(t => ({ ...t, restaurant_id: id })))
   }
   saved++
+  if (saved % 50 === 0) console.log(`  진행: ${saved}/${toInsert.length}`)
 }
 
-console.log(`\n🎉 완료! ${saved}개 식당 저장 (위시리스트)`)
+console.log(`\n🎉 완료! ${saved}개 식당 저장`)
+console.log(`   - 방문완료: ${visitedCount}`)
+console.log(`   - 위시리스트: ${wishCount}`)
