@@ -4,6 +4,7 @@ import NaverMap from './components/NaverMap'
 import BottomSheet from './components/BottomSheet'
 import LandmarkSheet from './components/LandmarkSheet'
 import AddRestaurant from './components/AddRestaurant'
+import BulkAdd from './components/BulkAdd'
 import FilterBar from './components/FilterBar'
 import AuthModal from './components/AuthModal'
 
@@ -25,6 +26,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+  const [showBulkAdd, setShowBulkAdd] = useState(false)
   const [filters, setFilters] = useState([])
   const [statusFilter, setStatusFilter] = useState('all')
   const [showNearby, setShowNearby] = useState(false)
@@ -58,6 +60,22 @@ export default function App() {
     if (_photos?.length) await supabase.from('photos').insert(_photos.map(p => ({ ...p, restaurant_id: id })))
     await fetchRestaurants()
     setShowAdd(false)
+  }
+
+  const handleBulkAdd = async (payloads) => {
+    let success = 0
+    let failed = 0
+    for (const p of payloads) {
+      const { _tags, _photos, ...restaurantData } = p
+      const { data, error } = await supabase.from('restaurants').insert([restaurantData]).select()
+      if (error || !data?.length) { failed++; continue }
+      const id = data[0].id
+      if (_tags?.length) await supabase.from('tags').insert(_tags.map(t => ({ ...t, restaurant_id: id })))
+      success++
+    }
+    alert(`저장 완료\n✅ 성공: ${success}\n${failed ? `❌ 실패: ${failed}` : ''}`)
+    await fetchRestaurants()
+    setShowBulkAdd(false)
   }
 
   const handleDeleteRestaurant = async (id) => {
@@ -160,19 +178,34 @@ export default function App() {
         >🔒 편집 모드</button>
       )}
 
-      {/* + 버튼 (편집 모드 시) */}
+      {/* + 버튼 + 일괄 등록 버튼 (편집 모드 시) */}
       {isAuthenticated && (
-        <button
-          onClick={() => setShowAdd(true)}
-          style={{
-            position: 'absolute', bottom: addButtonBottom, right: '16px',
-            width: '56px', height: '56px', borderRadius: '50%',
-            background: '#FF385C', color: 'white', border: 'none',
-            fontSize: '28px', lineHeight: '1', cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(255,56,92,0.4)', zIndex: 100,
-            transition: 'bottom 0.3s ease',
-          }}
-        >+</button>
+        <div style={{
+          position: 'absolute', bottom: addButtonBottom, right: '16px',
+          display: 'flex', flexDirection: 'column', gap: '10px',
+          zIndex: 100, transition: 'bottom 0.3s ease', alignItems: 'flex-end',
+        }}>
+          <button
+            onClick={() => setShowBulkAdd(true)}
+            title="여러 곳 한번에 등록"
+            style={{
+              width: '44px', height: '44px', borderRadius: '50%',
+              background: 'white', color: '#FF385C', border: '1px solid #FFD0D9',
+              fontSize: '20px', lineHeight: '1', cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            }}
+          >📋</button>
+          <button
+            onClick={() => setShowAdd(true)}
+            title="한 곳 등록"
+            style={{
+              width: '56px', height: '56px', borderRadius: '50%',
+              background: '#FF385C', color: 'white', border: 'none',
+              fontSize: '28px', lineHeight: '1', cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(255,56,92,0.4)',
+            }}
+          >+</button>
+        </div>
       )}
 
       {/* 인증 모달 */}
@@ -188,6 +221,14 @@ export default function App() {
         <AddRestaurant
           onSave={handleAddRestaurant}
           onClose={() => setShowAdd(false)}
+        />
+      )}
+
+      {/* 일괄 등록 모달 */}
+      {showBulkAdd && (
+        <BulkAdd
+          onSave={handleBulkAdd}
+          onClose={() => setShowBulkAdd(false)}
         />
       )}
     </div>
