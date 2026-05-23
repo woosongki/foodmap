@@ -1,16 +1,17 @@
 const LEVEL_TAGS = ['#재방문', '#감동', '#일차']
 
-const chip = (active, accent = '#FF385C', bg = '#FFF1F3') => ({
-  padding: '5px 12px',
-  borderRadius: '16px',
-  border: 'none',
+const chip = (active, accent = '#FF6B35', softBg = '#FFF5EE') => ({
+  padding: '7px 14px',
+  borderRadius: '9999px',
+  border: active ? 'none' : '1px solid #F3F4F6',
   cursor: 'pointer',
   fontSize: '13px',
-  fontWeight: active ? '600' : '400',
-  background: active ? accent : bg,
+  fontWeight: active ? '600' : '500',
+  background: active ? accent : softBg,
   color: active ? 'white' : accent,
   whiteSpace: 'nowrap',
   flexShrink: 0,
+  letterSpacing: '-0.1px',
 })
 
 export default function FilterBar({
@@ -26,20 +27,22 @@ export default function FilterBar({
   return (
     <div style={{
       position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
-      background: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-      padding: '10px 12px 8px',
+      background: 'white',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.04)',
+      padding: '12px 14px 10px',
+      borderBottom: '1px solid #F9FAFB',
     }}>
       {/* 상태 필터 + 내 주변 */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', alignItems: 'center' }}>
         {[
           { val: 'all', label: '전체' },
-          { val: 'visited', label: '방문완료' },
-          { val: 'wishlist', label: '위시리스트' },
+          { val: 'visited', label: '방문' },
+          { val: 'wishlist', label: '위시' },
         ].map(({ val, label }) => (
           <button
             key={val}
             onClick={() => setStatusFilter(val)}
-            style={chip(statusFilter === val, '#FF385C', '#F3F4F6')}
+            style={chip(statusFilter === val, '#FF6B35', '#F9FAFB')}
           >{label}</button>
         ))}
         <div style={{ flex: 1 }} />
@@ -56,14 +59,14 @@ export default function FilterBar({
             {tag}
           </button>
         ))}
-        <div style={{ width: '1px', background: '#E5E7EB', margin: '0 4px', flexShrink: 0 }} />
+        <div style={{ width: '1px', background: '#F3F4F6', margin: '0 4px', flexShrink: 0 }} />
         <button
           onClick={() => setLayerBaeknyeon(v => !v)}
-          style={chip(layerBaeknyeon, '#D97706', '#FEF3C7')}
+          style={chip(layerBaeknyeon, '#F59E0B', '#FFFBEB')}
         >🏛️ 백년</button>
         <button
           onClick={() => setLayerReview(v => !v)}
-          style={chip(layerReview, '#059669', '#ECFDF5')}
+          style={chip(layerReview, '#10B981', '#ECFDF5')}
         >⭐ 리뷰</button>
       </div>
     </div>

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 
-const VISITED_COLOR = '#FF385C'
+const VISITED_COLOR = '#FF6B35'
 const WISHLIST_COLOR = '#94A3B8'
 const LAYER_STYLE = {
-  baeknyeon: { color: '#D97706', icon: '🏛️', bg: '#FEF3C7' },
-  review: { color: '#059669', icon: '⭐', bg: '#ECFDF5' },
+  baeknyeon: { color: '#F59E0B', icon: '🏛️', bg: '#FEF3C7' },
+  review: { color: '#10B981', icon: '⭐', bg: '#ECFDF5' },
 }
 
 function isSdkReady() {
@@ -113,11 +113,11 @@ export default function NaverMap({
       disableClickZoom: false,
       gridSize: 100,
       icons: [
-        clusterIcon('#FF385C', 'white', 36),
-        clusterIcon('#FF385C', 'white', 42),
-        clusterIcon('#E11D48', 'white', 48),
-        clusterIcon('#BE123C', 'white', 54),
-        clusterIcon('#9F1239', 'white', 60),
+        clusterIcon('#FF6B35', 'white', 36),
+        clusterIcon('#FF6B35', 'white', 42),
+        clusterIcon('#E85A2C', 'white', 48),
+        clusterIcon('#C44820', 'white', 54),
+        clusterIcon('#9C3818', 'white', 60),
       ],
       indexGenerator: [10, 30, 80, 200, 500],
       stylingFunction: (clusterMarker, count) => {
@@ -157,11 +157,11 @@ export default function NaverMap({
       disableClickZoom: false,
       gridSize: 100,
       icons: [
-        clusterIcon('#D97706', 'white', 32),
-        clusterIcon('#D97706', 'white', 38),
-        clusterIcon('#B45309', 'white', 44),
-        clusterIcon('#92400E', 'white', 50),
-        clusterIcon('#78350F', 'white', 56),
+        clusterIcon('#F59E0B', 'white', 32),
+        clusterIcon('#F59E0B', 'white', 38),
+        clusterIcon('#D97706', 'white', 44),
+        clusterIcon('#B45309', 'white', 50),
+        clusterIcon('#92400E', 'white', 56),
       ],
       indexGenerator: [10, 30, 80, 200, 500],
       stylingFunction: (clusterMarker, count) => {

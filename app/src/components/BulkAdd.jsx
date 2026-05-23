@@ -5,7 +5,7 @@ import { useState } from 'react'
 
 const STATUS_OPTIONS = [
   { val: 'wishlist', label: '☆ 위시리스트', color: '#475569' },
-  { val: 'visited', label: '✓ 방문완료', color: '#FF385C' },
+  { val: 'visited', label: '✓ 방문완료', color: '#FF6B35' },
 ]
 
 const sectionLabel = {
@@ -191,7 +191,7 @@ export default function BulkAdd({ onSave, onClose }) {
               disabled={text.split('\n').filter(l => l.trim()).length === 0}
               style={{
                 width: '100%', padding: '12px', borderRadius: '10px', border: 'none',
-                background: '#FF385C', color: 'white', cursor: 'pointer',
+                background: '#FF6B35', color: 'white', cursor: 'pointer',
                 fontSize: '15px', fontWeight: '700', opacity: text.trim() ? 1 : 0.5,
               }}>
               🔍 일괄 검색 시작
@@ -207,7 +207,7 @@ export default function BulkAdd({ onSave, onClose }) {
             <div style={{ width: '100%', height: '6px', background: '#F3F4F6', borderRadius: '3px', overflow: 'hidden' }}>
               <div style={{
                 width: `${(progress.done / progress.total) * 100}%`,
-                height: '100%', background: '#FF385C', transition: 'width 0.2s',
+                height: '100%', background: '#FF6B35', transition: 'width 0.2s',
               }} />
             </div>
           </div>
@@ -231,7 +231,7 @@ export default function BulkAdd({ onSave, onClose }) {
                     checked={r.selected}
                     onChange={() => toggleSelect(i)}
                     disabled={!r.name}
-                    style={{ width: '18px', height: '18px', accentColor: '#FF385C', marginTop: '2px', flexShrink: 0 }}
+                    style={{ width: '18px', height: '18px', accentColor: '#FF6B35', marginTop: '2px', flexShrink: 0 }}
                   />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '12px', color: '#9CA3AF', marginBottom: '2px' }}>
@@ -246,7 +246,7 @@ export default function BulkAdd({ onSave, onClose }) {
                         )}
                         {r.alternatives.length > 0 && (
                           <details style={{ marginTop: '6px' }}>
-                            <summary style={{ fontSize: '12px', color: '#FF385C', cursor: 'pointer' }}>
+                            <summary style={{ fontSize: '12px', color: '#FF6B35', cursor: 'pointer' }}>
                               다른 결과로 교체 ▾ ({r.alternatives.length}개)
                             </summary>
                             <div style={{ marginTop: '6px', paddingLeft: '8px' }}>
@@ -285,7 +285,7 @@ export default function BulkAdd({ onSave, onClose }) {
                 ← 다시 입력
               </button>
               <button onClick={handleSave}
-                style={{ flex: 1, padding: '12px', borderRadius: '10px', background: '#FF385C', color: 'white', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: '700' }}>
+                style={{ flex: 1, padding: '12px', borderRadius: '10px', background: '#FF6B35', color: 'white', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: '700' }}>
                 선택한 {results.filter(r => r.selected && r.name).length}개 저장
               </button>
             </div>

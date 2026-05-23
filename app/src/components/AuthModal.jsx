@@ -29,18 +29,18 @@ export default function AuthModal({ onSuccess, onClose }) {
           autoFocus
           style={{
             width: '100%', padding: '11px 12px', borderRadius: '10px',
-            border: `1.5px solid ${error ? '#FF385C' : '#E5E7EB'}`,
+            border: `1.5px solid ${error ? '#FF6B35' : '#E5E7EB'}`,
             fontSize: '15px', marginBottom: error ? '6px' : '16px',
             outline: 'none', boxSizing: 'border-box',
             background: error ? '#FFF5F5' : 'white',
           }}
         />
-        {error && <p style={{ color: '#FF385C', fontSize: '13px', marginBottom: '12px' }}>비밀번호가 틀렸습니다</p>}
+        {error && <p style={{ color: '#FF6B35', fontSize: '13px', marginBottom: '12px' }}>비밀번호가 틀렸습니다</p>}
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={onClose}
             style={{ flex: 1, padding: '11px', borderRadius: '10px', border: '1px solid #E5E7EB', background: 'white', cursor: 'pointer', fontSize: '14px', color: '#374151' }}>취소</button>
           <button onClick={submit}
-            style={{ flex: 1, padding: '11px', borderRadius: '10px', background: '#FF385C', color: 'white', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '700' }}>확인</button>
+            style={{ flex: 1, padding: '11px', borderRadius: '10px', background: '#FF6B35', color: 'white', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '700' }}>확인</button>
         </div>
       </div>
     </div>

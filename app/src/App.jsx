@@ -170,10 +170,11 @@ export default function App() {
         <button
           onClick={() => setShowAuth(true)}
           style={{
-            position: 'absolute', bottom: '16px', right: '16px',
-            padding: '10px 16px', borderRadius: '20px', border: '1px solid #E5E7EB',
+            position: 'absolute', bottom: '20px', right: '16px',
+            padding: '11px 18px', borderRadius: '9999px', border: 'none',
             background: 'white', fontSize: '13px', cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.12)', zIndex: 100, color: '#374151',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.08)', zIndex: 100, color: '#6B7280',
+            fontWeight: '500',
           }}
         >🔒 편집 모드</button>
       )}
@@ -181,28 +182,29 @@ export default function App() {
       {/* + 버튼 + 일괄 등록 버튼 (편집 모드 시) */}
       {isAuthenticated && (
         <div style={{
-          position: 'absolute', bottom: addButtonBottom, right: '16px',
-          display: 'flex', flexDirection: 'column', gap: '10px',
+          position: 'absolute', bottom: addButtonBottom, right: '18px',
+          display: 'flex', flexDirection: 'column', gap: '12px',
           zIndex: 100, transition: 'bottom 0.3s ease', alignItems: 'flex-end',
         }}>
           <button
             onClick={() => setShowBulkAdd(true)}
             title="여러 곳 한번에 등록"
             style={{
-              width: '44px', height: '44px', borderRadius: '50%',
-              background: 'white', color: '#FF385C', border: '1px solid #FFD0D9',
+              width: '48px', height: '48px', borderRadius: '50%',
+              background: 'white', color: '#FF6B35', border: 'none',
               fontSize: '20px', lineHeight: '1', cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
             }}
           >📋</button>
           <button
             onClick={() => setShowAdd(true)}
             title="한 곳 등록"
             style={{
-              width: '56px', height: '56px', borderRadius: '50%',
-              background: '#FF385C', color: 'white', border: 'none',
-              fontSize: '28px', lineHeight: '1', cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(255,56,92,0.4)',
+              width: '60px', height: '60px', borderRadius: '50%',
+              background: '#FF6B35', color: 'white', border: 'none',
+              fontSize: '30px', lineHeight: '1', cursor: 'pointer',
+              boxShadow: '0 6px 20px rgba(255,107,53,0.40)',
+              fontWeight: '300',
             }}
           >+</button>
         </div>

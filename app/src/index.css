@@ -1,3 +1,50 @@
+/* ───────────────────────────────────────────────────────────────
+   디자인 토큰 — BonAppetit 톤앤매너
+   따뜻한 코랄·오렌지, 부드러운 그림자, 매우 둥근 코너
+   ─────────────────────────────────────────────────────────────── */
+:root {
+  /* Primary (따뜻한 코랄·오렌지) */
+  --primary:        #FF6B35;
+  --primary-dark:   #E85A2C;
+  --primary-soft:   #FFE9DC;
+  --primary-bg:     #FFF5EE;
+
+  /* Surface / Background */
+  --bg:             #FFFFFF;
+  --surface:        #FFFFFF;
+  --surface-alt:    #F9FAFB;
+  --surface-soft:   #F3F4F6;
+
+  /* Border */
+  --border:         #F3F4F6;
+  --border-strong:  #E5E7EB;
+
+  /* Text */
+  --text:           #1F2937;
+  --text-secondary: #6B7280;
+  --text-muted:     #9CA3AF;
+
+  /* Status */
+  --visited:        #FF6B35;
+  --wishlist:       #94A3B8;
+  --baeknyeon:      #F59E0B;
+  --baeknyeon-soft: #FEF3C7;
+
+  /* Shadow */
+  --shadow-sm:      0 1px 3px rgba(0,0,0,0.05);
+  --shadow-md:      0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg:      0 8px 24px rgba(0,0,0,0.10);
+  --shadow-primary: 0 6px 20px rgba(255,107,53,0.30);
+
+  /* Radius */
+  --radius-sm:      8px;
+  --radius-md:      12px;
+  --radius-lg:      16px;
+  --radius-xl:      20px;
+  --radius-2xl:     24px;
+  --radius-full:    9999px;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -12,16 +59,27 @@ html, body, #root {
   font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
     'Noto Sans KR', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
+  color: var(--text);
+  background: var(--bg);
 }
 
 button {
   font-family: inherit;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  transition: transform 0.1s ease, box-shadow 0.2s ease, background 0.15s ease;
+}
+button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 input, textarea {
   font-family: inherit;
+  color: var(--text);
+}
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary) !important;
 }
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
