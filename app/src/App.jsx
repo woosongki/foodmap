@@ -10,6 +10,29 @@ import AuthModal from './components/AuthModal'
 
 const NEARBY_KM = 2
 
+// ─── Supabase egress 절감 ──────────────────────────────────
+// 1. restaurants 캐싱: localStorage + 30분 TTL
+// 2. landmarks: 정적 JSON (/baeknyeon.json)에서 가져옴
+// 3. select 최적화: 지도용 최소 필드만, photos/memo는 핀 클릭 시 lazy load
+const CACHE_KEY = 'foodmap_restaurants_v1'
+const CACHE_TTL_MS = 30 * 60 * 1000 // 30분
+
+function readCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const { ts, data } = JSON.parse(raw)
+    if (Date.now() - ts > CACHE_TTL_MS) return null
+    return data
+  } catch { return null }
+}
+function writeCache(data) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })) } catch {}
+}
+function invalidateCache() {
+  try { localStorage.removeItem(CACHE_KEY) } catch {}
+}
+
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -36,19 +59,53 @@ export default function App() {
 
   useEffect(() => { fetchRestaurants(); fetchLandmarks() }, [])
 
-  const fetchRestaurants = async () => {
+  // restaurants: 캐시 우선 → 미스 시 Supabase. 지도용 필드만 (memo/photos 제외)
+  const fetchRestaurants = async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const cached = readCache()
+      if (cached) { setRestaurants(cached); return }
+    }
     const { data } = await supabase
       .from('restaurants')
-      .select('*, tags(*), photos(*)')
+      .select('id, name, address, lat, lng, status, naver_url, source, recommender, axis_taste, axis_revisit, axis_unique, tags(tag, tag_type)')
       .order('created_at', { ascending: false })
-    if (data) setRestaurants(data)
+    if (data) {
+      setRestaurants(data)
+      writeCache(data)
+    }
   }
 
+  // landmarks: 정적 JSON (Vercel CDN). Supabase egress 안 씀
   const fetchLandmarks = async () => {
+    try {
+      const res = await fetch('/baeknyeon.json')
+      if (res.ok) {
+        const data = await res.json()
+        setLandmarks(data)
+      }
+    } catch (e) {
+      console.error('백년가게 데이터 로드 실패:', e)
+    }
+  }
+
+  // 핀 클릭 시 photos·memo lazy load (캐시 안 됨, 매번 새로)
+  const handleSelectRestaurant = async (r) => {
+    setSelected(r)  // 1차: 기본 정보로 즉시 표시
+    if (r._detailLoaded) return  // 이미 로드된 경우
+
+    // 2차: photos + memo만 추가 fetch
     const { data } = await supabase
-      .from('external_landmarks')
-      .select('*')
-    if (data) setLandmarks(data)
+      .from('restaurants')
+      .select('memo, photos(*)')
+      .eq('id', r.id)
+      .single()
+
+    if (data) {
+      const enriched = { ...r, memo: data.memo, photos: data.photos, _detailLoaded: true }
+      setSelected(enriched)
+      // 현재 restaurants 배열에도 반영 (다음에 클릭 시 캐시)
+      setRestaurants(prev => prev.map(x => x.id === r.id ? enriched : x))
+    }
   }
 
   const handleAddRestaurant = async (payload) => {
@@ -58,7 +115,8 @@ export default function App() {
     const id = data[0].id
     if (_tags?.length) await supabase.from('tags').insert(_tags.map(t => ({ ...t, restaurant_id: id })))
     if (_photos?.length) await supabase.from('photos').insert(_photos.map(p => ({ ...p, restaurant_id: id })))
-    await fetchRestaurants()
+    invalidateCache()
+    await fetchRestaurants(true)
     setShowAdd(false)
   }
 
@@ -74,19 +132,22 @@ export default function App() {
       success++
     }
     alert(`저장 완료\n✅ 성공: ${success}\n${failed ? `❌ 실패: ${failed}` : ''}`)
-    await fetchRestaurants()
+    invalidateCache()
+    await fetchRestaurants(true)
     setShowBulkAdd(false)
   }
 
   const handleDeleteRestaurant = async (id) => {
     await supabase.from('restaurants').delete().eq('id', id)
     setSelected(null)
-    await fetchRestaurants()
+    invalidateCache()
+    await fetchRestaurants(true)
   }
 
   const handleUpdateRestaurant = useCallback(async (id, updates) => {
     await supabase.from('restaurants').update(updates).eq('id', id)
-    await fetchRestaurants()
+    invalidateCache()
+    await fetchRestaurants(true)
     setSelected(prev => prev?.id === id ? { ...prev, ...updates } : prev)
   }, [])
 
@@ -141,7 +202,7 @@ export default function App() {
         <NaverMap
           restaurants={visibleRestaurants}
           landmarks={visibleLandmarks}
-          onSelectRestaurant={r => { setSelectedLandmark(null); setSelected(r) }}
+          onSelectRestaurant={r => { setSelectedLandmark(null); handleSelectRestaurant(r) }}
           onSelectLandmark={l => { setSelected(null); setSelectedLandmark(l) }}
           userLocation={userLocation}
         />
