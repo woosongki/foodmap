@@ -14,8 +14,8 @@ const NEARBY_KM = 2
 // 1. restaurants 캐싱: localStorage + 30분 TTL
 // 2. landmarks: 정적 JSON (/baeknyeon.json)에서 가져옴
 // 3. select 최적화: 지도용 최소 필드만, photos/memo는 핀 클릭 시 lazy load
-const CACHE_KEY = 'foodmap_restaurants_v1'
-const CACHE_TTL_MS = 30 * 60 * 1000 // 30분
+const CACHE_KEY = 'foodmap_restaurants_v2'
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24시간 (egress 절감 강화)
 
 function readCache() {
   try {
